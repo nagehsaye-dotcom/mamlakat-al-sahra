@@ -1,1 +1,55 @@
 
+name: Extract Unity Project
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find Unity ZIP
+        run: |
+          ZIP=$(find . -maxdepth 1 -type f -iname '*Unity*V1*.zip' | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "Unity ZIP not found"
+            exit 1
+          fi
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract Unity project
+        run: |
+          mkdir -p extracted
+          unzip -q "$ZIP" -d extracted
+
+          PROJECT=$(find extracted -type d \
+            -name Assets -print -quit | sed 's#/Assets$##')
+
+          if [ -z "$PROJECT" ]; then
+            echo "Unity project was not found"
+            exit 1
+          fi
+
+          cp -a "$PROJECT/Assets" .
+          cp -a "$PROJECT/Packages" .
+          cp -a "$PROJECT/ProjectSettings" .
+
+          if [ -f "$PROJECT/README_AR.md" ]; then
+            cp "$PROJECT/README_AR.md" .
+          fi
+
+      - name: Commit Unity project
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add Assets Packages ProjectSettings README_AR.md
+          git commit -m "Add Unity project for إلى الحقيقة" || echo "Nothing to commit"
+          git push
