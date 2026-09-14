@@ -1,9 +1,10 @@
 name: Build Mamlakat Al-Sahra APK
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -17,7 +18,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -26,35 +27,60 @@ jobs:
         run: |
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Find and extract Android project
+      - name: Find project ZIP
         run: |
-          ZIP=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
-          echo "Found ZIP: $ZIP"
-          unzip -o "$ZIP" -d extracted
+          echo "ZIP files:"
+          find . -maxdepth 2 -type f -iname "*.zip"
 
-      - name: Find project folder
+      - name: Extract project
         run: |
-          PROJECT=$(find extracted -type f -name "settings.gradle" -o -name "settings.gradle.kts" | head -n 1)
-          PROJECT_DIR=$(dirname "$PROJECT")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-          echo "Project found at: $PROJECT_DIR"
+          set -e
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
+          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: Android project ZIP not found"
+            exit 1
+          fi
+
+          echo "Using ZIP: $ZIP_FILE"
+
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+
+          echo "Searching for Gradle project..."
+
+          GRADLEW=$(find extracted -type f -name "gradlew" | head -n 1)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: gradlew not found inside ZIP"
+            echo "Files found:"
+            find extracted -maxdepth 4 -type f | head -n 100
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLEW")
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Android project:"
+          echo "$PROJECT_DIR"
+
+      - name: Grant permission
+        run: |
+          chmod +x "$PROJECT_DIR/gradlew"
 
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
-          gradle :app:assembleDebug --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Find APK
         run: |
-          find "$PROJECT_DIR" -type f -name "*.apk" -print
+          find "$PROJECT_DIR/app/build/outputs" -type f -name "*.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Mamlakat-Al-Sahra-APK
-          path: '**/app/build/outputs/apk/debug/*.apk'
+          path: "**/app/build/outputs/apk/**/*.apk"
